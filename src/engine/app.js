@@ -21,7 +21,6 @@ const STACKED_MQ = '(max-width: 860px), (max-height: 560px) and (max-width: 1000
 const MSG = {
   miss: 'Missed — draw the blade across the slice.',
   plenty: 'That’s plenty of pieces. Reset to start a fresh slice.',
-  thin: 'Too thin to cut there.',
   busy: 'One cut at a time.',
   paused: 'Resume to cut.',
 };
@@ -361,28 +360,28 @@ export async function createEngine({ canvas, strokeLine, settings, on = {} }) {
     const o = lerp3(H0, H1, 0.5);
 
     const next = [], origin = [], sep = [];
-    let split = 0, thin = false;
+    let split = 0;
     pieces.forEach((pc, c) => {
       const keep = () => { next.push(pc); origin.push(c); };
       if (!hits.has(c)) return keep();
       const F = sim.pieceFrame(c);
       const nr = mat3TMulVec(F.R, n), pr = add(mat3TMulVec(F.R, sub(o, F.cw)), F.cr);
       const Ln = Math.hypot(nr[0], nr[2]);
-      if (Ln < 0.3) { thin = true; return keep(); } // lying on its side
+      if (Ln < 0.08) return keep(); // lying flat on its side: the blade runs along its faces
       const cc = (dot(nr, pr) - nr[1] * (T / 2)) / Ln, a = nr[0] / Ln, b = nr[2] / Ln;
-      if (!lineCrossesPiece(pc.I, a, b, cc)) return keep();
-      const halves = splitPiece(pc.I, a, b, cc);
-      if (!halves) { thin = true; return keep(); }
+      if (!lineCrossesPiece(pc, a, b, cc)) return keep();
+      const halves = splitPiece(pc, a, b, cc);
+      if (!halves) return keep(); // the line only grazes its rounded edge
       for (const Hh of halves) {
-        const rc = polyCentroid(Hh), restC = [rc[0], T / 2, rc[1]];
+        const rc = polyCentroid(Hh.I), restC = [rc[0], T / 2, rc[1]];
         const wc = add(F.cw, mat3MulVec(F.R, sub(restC, F.cr)));
         sep.push({ index: next.length, dir: dot(sub(wc, o), n) >= 0 ? 1 : -1 });
-        next.push({ I: Hh, cache: null });
+        next.push(Hh);
         origin.push(c);
       }
       split++;
     });
-    if (!split) return { miss: thin ? MSG.thin : MSG.miss };
+    if (!split) return { miss: '' }; // only crumbs too small to split were hit: quietly do nothing
     if (next.length > MAX_PIECES) return { miss: MSG.plenty };
     const tb = performance.now();
     const nextWorld = buildWorld(next);

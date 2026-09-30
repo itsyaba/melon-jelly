@@ -49,9 +49,9 @@ export function regionOf(x, z) {
 // ---------------------------------------------------------------------------
 // Convex pieces: outline samples, signed distance, lattices
 
-// Boundary samples of a convex CCW polygon I grown by RC: { q, n } where q is on the inner
+// Boundary samples of a convex CCW polygon I grown by r: { q, n } where q is on the inner
 // polygon and n the outward normal. Any offset curve is q + n·d with identical indexing.
-export function pieceSamples(I, spacing, maxAngleStep) {
+export function pieceSamples(I, spacing, maxAngleStep, r = RC) {
   const out = [], N = I.length, edgeN = [];
   for (let i = 0; i < N; i++) {
     const p = I[i], q = I[(i + 1) % N], ex = q[0] - p[0], ew = q[1] - p[1], l = Math.hypot(ex, ew) || 1;
@@ -63,7 +63,7 @@ export function pieceSamples(I, spacing, maxAngleStep) {
     let da = a1 - a0;
     while (da < 0) da += Math.PI * 2;
     if (da > Math.PI * 1.5) da = 0;
-    const na = Math.max(1, Math.ceil(Math.max((RC * da) / spacing, da / maxAngleStep)));
+    const na = Math.max(1, Math.ceil(Math.max((r * da) / spacing, da / maxAngleStep)));
     for (let k = 0; k < na; k++) {
       const t = a0 + (da * k) / na;
       out.push({ q: I[i], n: [Math.cos(t), Math.sin(t)] });
@@ -88,7 +88,7 @@ export function sdInner(I, u, w) {
   }
   return d;
 }
-export const sdPiece = (I, u, w) => sdInner(I, u, w) - RC;
+export const sdPiece = (I, u, w, r = RC) => sdInner(I, u, w) - r;
 
 // Hex lattice over the bbox of I padded by `pad`; keep(u, w) filters points.
 export function bboxLattice(I, pad, spacing, keep) {

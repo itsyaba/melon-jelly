@@ -145,7 +145,7 @@ const many = await sim(() => {
   return { pieces: m.pieces, refused, log };
 });
 if (process.env.DEBUG) console.log(many.log.join(' '));
-check('many cuts, then a clean refusal', many.pieces >= 6 && many.pieces <= 14 && !many.refused.ok && (many.pieces < 14 || /plenty/i.test(many.refused.miss)), `pieces ${many.pieces}, "${many.refused.miss}"`);
+check('cuts all the way to the 14-piece cap', many.pieces === 14 && !many.refused.ok && /plenty/i.test(many.refused.miss) && !many.log.some((l) => /thin/i.test(l)), `pieces ${many.pieces}, "${many.refused.miss}"`);
 await page.waitForTimeout(2500);
 check('many pieces stay stable', await sim(() => Number.isFinite(window.__melon.sim.minY()) && window.__melon.sim.minVolumeRatio() > 0));
 await page.screenshot({ path: `${dir}/10-many.png` });

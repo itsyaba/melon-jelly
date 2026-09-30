@@ -53,8 +53,10 @@ src/
 - **Cutting:** every piece is a convex polygon in one shared rest frame, with its real outline
   grown by `RC`. A cut clips the polygon at `±RC`, so both rounded halves meet exactly on the
   knife line. The new world is built while the knife is still in the air, and state is carried
-  over by barycentric embedding into the old tetrahedra. Pieces narrower than about 2·RC can't be
-  split again ("Too thin to cut there"), and there are at most 14 pieces.
+  over by barycentric embedding into the old tetrahedra. Each piece carries its own corner radius:
+  when a piece is too small for the full `RC`, the cut falls back to a tighter radius (growing
+  the inner polygon to match, so the outline doesn't move), so small pieces still cut cleanly.
+  There are at most 14 pieces.
 - **Rendering:** the jelly pass refracts the scene behind it using the back-face depth for
   thickness, applies coloured absorption, scatters light in the pale rind, and adds back-lit edge
   glow and studio reflections. The result is tone-mapped with Khronos PBR Neutral.
@@ -62,7 +64,7 @@ src/
 ## Checks
 
 ```sh
-pnpm check                      # Node: geometry + physics (settling, volume, stretch)
+pnpm check                      # Node: geometry, physics (settling, volume, stretch), cutting
 pnpm dev --port 5391 &          # then, with Playwright's Chromium installed:
 pnpm e2e http://localhost:5391/ # browser checks + screenshots into e2e-shots/
 ```

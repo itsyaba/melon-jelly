@@ -6,8 +6,16 @@ import {
   regionOf, globalProps, polyArea,
 } from './geometry.js';
 
+function polyPerimeter(P) {
+  let s = 0;
+  for (let i = 0; i < P.length; i++) s += Math.hypot(P[(i + 1) % P.length][0] - P[i][0], P[(i + 1) % P.length][1] - P[i][1]);
+  return s;
+}
+
 export const MAX_PIECES = 14;
 export const MIN_INNER_AREA = 0.004;
+// Smallest corner radius a cut may fall back to, so small pieces can still be cut.
+export const MIN_CUT_R = 0.02;
 
 // The sector, approximated by a 42-vertex convex polygon (apex + 41 arc points).
 export function initialPiece() {
@@ -18,7 +26,7 @@ export function initialPiece() {
     const t = a0 + ((a1 - a0) * k) / n;
     I.push([Math.cos(t) * Ri, Math.sin(t) * Ri]);
   }
-  return { I, cache: null };
+  return { I, r: RC, cache: null };
 }
 
 // Sutherland–Hodgman: keep a·u + b·w ≤ c.
@@ -46,37 +54,78 @@ export function clipHalf(P, a, b, c) {
   return clean;
 }
 
-// Inner polygons are pulled back by RC so their ROUNDED outlines meet exactly on the cut.
-export function splitPiece(I, a, b, c) {
-  const A = clipHalf(I, a, b, c - RC);
-  const B = clipHalf(I, -a, -b, -(c + RC));
-  if (A.length < 3 || B.length < 3 || polyArea(A) < MIN_INNER_AREA || polyArea(B) < MIN_INNER_AREA) return null;
-  return [A, B];
+// Grow a convex polygon by d, sampling each corner's arc so the result hugs the old rounded
+// outline. Used to hand a piece a smaller corner radius without moving its outline.
+export function growPoly(I, d) {
+  if (d <= 1e-6) return I;
+  const N = I.length, out = [];
+  const edgeN = (i) => {
+    const p = I[i], q = I[(i + 1) % N], ex = q[0] - p[0], ew = q[1] - p[1], l = Math.hypot(ex, ew) || 1;
+    return [ew / l, -ex / l];
+  };
+  for (let i = 0; i < N; i++) {
+    const n0 = edgeN((i - 1 + N) % N), n1 = edgeN(i);
+    const a0 = Math.atan2(n0[1], n0[0]);
+    let da = Math.atan2(n1[1], n1[0]) - a0;
+    while (da < 0) da += Math.PI * 2;
+    if (da > Math.PI * 1.5) da = 0;
+    const na = Math.ceil(da / 0.3);
+    for (let k = 0; k <= na; k++) {
+      const t = a0 + (na ? (da * k) / na : 0);
+      const p = [I[i][0] + Math.cos(t) * d, I[i][1] + Math.sin(t) * d], l = out[out.length - 1];
+      if (!l || Math.hypot(p[0] - l[0], p[1] - l[1]) > 1e-5) out.push(p);
+    }
+  }
+  while (out.length > 1 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) <= 1e-5) out.pop();
+  return out;
 }
 
-export function lineCrossesPiece(I, a, b, c) {
+// Inner polygons are pulled back by the corner radius r so their ROUNDED outlines meet exactly
+// on the cut. A piece too small for its radius is cut with a tighter one instead (its inner
+// polygon grown to match), so any piece that the line really crosses can be split.
+export function splitPiece(piece, a, b, c) {
+  const r0 = piece.r ?? RC;
+  for (const f of [1, 0.75, 0.55, 0.4, 0.3, 0.22, 0.16, 0.12, 0]) {
+    const r = Math.min(r0, Math.max(MIN_CUT_R, r0 * f));
+    const J = growPoly(piece.I, r0 - r);
+    const A = clipHalf(J, a, b, c - r);
+    const B = clipHalf(J, -a, -b, -(c + r));
+    const minA = f === 1 ? MIN_INNER_AREA : 0.0002;
+    if (A.length >= 3 && B.length >= 3 && polyArea(A) >= minA && polyArea(B) >= minA) {
+      const halves = [{ I: A, r, cache: null }, { I: B, r, cache: null }];
+      if (halves.every((h) => ensureCache(h).sim.nT > 0)) return halves;
+    }
+    if (r <= MIN_CUT_R) break;
+  }
+  return null;
+}
+
+export function lineCrossesPiece(piece, a, b, c) {
+  const r = piece.r ?? RC;
   let lo = Infinity, hi = -Infinity;
-  for (const p of I) {
+  for (const p of piece.I) {
     const s = a * p[0] + b * p[1];
     lo = Math.min(lo, s); hi = Math.max(hi, s);
   }
-  return c > lo - 0.6 * RC && c < hi + 0.6 * RC;
+  return c > lo - 0.6 * r && c < hi + 0.6 * r;
 }
 
 // ---------------------------------------------------------------------------
 // Simulation mesh: particles + tetrahedra
 
-export function buildPieceSim(I, h = 0.15, layers = 3) {
+export function buildPieceSim(I, r = RC, h = 0.15, layers = 3) {
   const { T } = SHAPE;
+  // small pieces get a finer lattice so they still hold a few particles across
+  h = Math.min(h, Math.max(0.05, 0.45 * Math.sqrt(polyArea(I) + polyPerimeter(I) * r + Math.PI * r * r)));
   // boundary points on the rounded outline, de-duplicated
   const pts = [];
   const tooClose = (u, w, r) => pts.some((p) => (p[0] - u) ** 2 + (p[1] - w) ** 2 < r * r);
-  for (const s of pieceSamples(I, h, 0.6)) {
-    const u = s.q[0] + s.n[0] * RC, w = s.q[1] + s.n[1] * RC;
+  for (const s of pieceSamples(I, h, 0.6, r)) {
+    const u = s.q[0] + s.n[0] * r, w = s.q[1] + s.n[1] * r;
     if (!tooClose(u, w, 0.45 * h)) pts.push([u, w]);
   }
   const nB = pts.length;
-  for (const p of bboxLattice(I, RC, h, (u, w) => sdPiece(I, u, w) < -0.55 * h)) pts.push(p);
+  for (const p of bboxLattice(I, r, h, (u, w) => sdPiece(I, u, w, r) < -0.55 * h)) pts.push(p);
   if (pts.length - nB < 1) {
     // tiny piece: at least one interior point at the inner centroid
     let cu = 0, cw = 0;
@@ -92,6 +141,7 @@ export function buildPieceSim(I, h = 0.15, layers = 3) {
     const e = Math.max((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2, (c[0] - b[0]) ** 2 + (c[1] - b[1]) ** 2, (a[0] - c[0]) ** 2 + (a[1] - c[1]) ** 2);
     if (area / e > 0.1) tris.push(raw[i], raw[i + 1], raw[i + 2]);
   }
+  if (!tris.length) for (const v of raw) tris.push(v); // thin sliver: keep what there is
   const remap = new Int32Array(pts.length).fill(-1), used = [];
   for (const v of tris) if (remap[v] < 0) { remap[v] = used.length; used.push(pts[v]); }
   for (let i = 0; i < tris.length; i++) tris[i] = remap[tris[i]];
@@ -128,8 +178,9 @@ export function buildPieceSim(I, h = 0.15, layers = 3) {
 // ---------------------------------------------------------------------------
 // Render mesh: beveled rounded slab + caps + seeds + bubbles
 
-export function buildPieceRender(I) {
-  const { T, bevel: b } = SHAPE;
+export function buildPieceRender(I, r = RC) {
+  const { T } = SHAPE;
+  const b = Math.min(SHAPE.bevel, r); // tight-cornered pieces get a matching edge bevel
   const pos = [], nrm = [], mat = [];
   const body = [], seeds = [], bubbles = [];
   const vert = (x, y, z, nx, ny, nz, m) => {
@@ -139,16 +190,16 @@ export function buildPieceRender(I) {
   vert.count = () => mat.length;
 
   // rings around the outline
-  const S = pieceSamples(I, 0.03, 0.1), N = S.length;
+  const S = pieceSamples(I, 0.03, 0.1, r), N = S.length;
   const qb = 8, qs = 3, rings = [];
   for (let j = 0; j <= qb; j++) {
     const ps = -Math.PI / 2 + ((Math.PI / 2) * j) / qb;
-    rings.push({ d: RC - b + b * Math.cos(ps), y: b + b * Math.sin(ps), ny: Math.sin(ps), nr: Math.cos(ps) });
+    rings.push({ d: r - b + b * Math.cos(ps), y: b + b * Math.sin(ps), ny: Math.sin(ps), nr: Math.cos(ps) });
   }
-  for (let j = 1; j < qs; j++) rings.push({ d: RC, y: b + ((T - 2 * b) * j) / qs, ny: 0, nr: 1 });
+  for (let j = 1; j < qs; j++) rings.push({ d: r, y: b + ((T - 2 * b) * j) / qs, ny: 0, nr: 1 });
   for (let j = 0; j <= qb; j++) {
     const ps = ((Math.PI / 2) * j) / qb;
-    rings.push({ d: RC - b + b * Math.cos(ps), y: T - b + b * Math.sin(ps), ny: Math.sin(ps), nr: Math.cos(ps) });
+    rings.push({ d: r - b + b * Math.cos(ps), y: T - b + b * Math.sin(ps), ny: Math.sin(ps), nr: Math.cos(ps) });
   }
   const ringBase = [];
   for (const r of rings) {
@@ -165,8 +216,8 @@ export function buildPieceRender(I) {
     }
   }
 
-  // caps: outline inset by RC − bevel + a fine lattice, Delaunay'd; welded onto the end rings
-  const d0 = RC - b, sp = 0.048;
+  // caps: outline inset by r − bevel + a fine lattice, Delaunay'd; welded onto the end rings
+  const d0 = r - b, sp = 0.048;
   const cap = S.map((s) => [s.q[0] + s.n[0] * d0, s.q[1] + s.n[1] * d0]);
   for (const p of bboxLattice(I, d0, sp, (u, w) => sdInner(I, u, w) < d0 - 0.55 * sp)) cap.push(p);
   const capTris = delaunay(cap);
@@ -183,7 +234,7 @@ export function buildPieceRender(I) {
 
   // props wholly inside this piece
   for (const pr of globalProps()) {
-    if (sdPiece(I, pr.cx, pr.cz) + pr.rad > -0.02) continue;
+    if (sdPiece(I, pr.cx, pr.cz, r) + pr.rad > -0.02) continue;
     if (pr.kind === 'seed') addSeed(pr, vert, seeds);
     else addBubble(pr, vert, bubbles);
   }
@@ -276,8 +327,8 @@ function addBubble(pr, vert, out) {
 
 export function ensureCache(piece) {
   if (piece.cache) return piece.cache;
-  const sim = buildPieceSim(piece.I);
-  const ren = buildPieceRender(piece.I);
+  const sim = buildPieceSim(piece.I, piece.r ?? RC);
+  const ren = buildPieceRender(piece.I, piece.r ?? RC);
   const emb = embed(sim.rest, sim.tets, ren.pos);
   piece.cache = { sim, ren, emb };
   return piece.cache;

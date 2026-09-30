@@ -12,6 +12,6 @@ let minW = 0; for (const x of w.mesh.skinW) minW = Math.min(minW, x);
 console.log('min skin weight', minW.toFixed(3));
 const reg = [0,0,0]; for (const r of w.region) reg[r]++; console.log('regions', reg);
 t0 = performance.now();
-const halves = splitPiece(p.I, 1, 0, 0.1);
-const w2 = buildWorld(halves.map(I => ({ I, cache: null })));
+const halves = splitPiece(p, 1, 0, 0.1);
+const w2 = buildWorld(halves);
 console.log('split build ms', (performance.now() - t0).toFixed(0), 'n', w2.n, 'nComp', w2.nComp);
