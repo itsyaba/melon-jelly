@@ -10,10 +10,18 @@ let engineChain = Promise.resolve()
 
 const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
+const ua = typeof navigator === 'object' ? navigator.userAgent : ''
+const geckoLinux = /Firefox\//.test(ua) && /Linux/.test(ua) && !/Android/.test(ua)
+
 const FALLBACKS = {
   'no-webgpu': {
     title: 'This specimen needs WebGPU.',
     body: 'Open it in a current Chrome or Edge, Safari 26 or newer, or Firefox on Windows. The page deliberately does not fake it with a weaker renderer.',
+    ...(typeof isSecureContext === 'boolean' && !isSecureContext
+      ? { detail: 'WebGPU only runs on https:// or localhost. Open this page from localhost, or serve it over HTTPS.' }
+      : geckoLinux
+        ? { detail: 'Firefox and Zen on Linux ship WebGPU switched off: open about:config, set dom.webgpu.enabled to true, then restart the browser.' }
+        : {}),
   },
   'no-adapter': {
     title: 'No GPU adapter was available.',
