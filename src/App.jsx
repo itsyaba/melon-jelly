@@ -4,6 +4,10 @@ import Readouts from './components/Readouts.jsx'
 import Notes from './components/Notes.jsx'
 import { PALETTES, linToHex } from './engine/palettes.js'
 
+// Engines are created one at a time: StrictMode mounts twice in dev, and two devices must
+// never race to configure the same canvas.
+let engineChain = Promise.resolve()
+
 const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const FALLBACKS = {
@@ -37,7 +41,7 @@ export default function App() {
     paused: false,
   })
   const uiRef = useRef(ui)
-  uiRef.current = ui
+  useEffect(() => { uiRef.current = ui })
 
   const [status, setStatus] = useState({ text: 'WEBGPU · STARTING', state: 'idle' })
   const [stats, setStats] = useState({ mass: '—', vol: '—', ke: '—', pieces: '1' })
@@ -66,9 +70,10 @@ export default function App() {
       document.body.classList.add('no-gpu')
     }
 
-    import('./engine/app.js')
-      .then(({ createEngine }) =>
-        createEngine({
+    const run = engineChain
+      .then(() => (cancelled ? null : import('./engine/app.js')))
+      .then((mod) =>
+        mod && mod.createEngine({
           canvas: canvasRef.current,
           strokeLine: strokeRef.current,
           settings: { ...uiRef.current, reducedMotion },
@@ -82,6 +87,7 @@ export default function App() {
         }),
       )
       .then((e) => {
+        if (!e) return
         if (cancelled) e.destroy()
         else engine = engineRef.current = e
       })
@@ -90,6 +96,7 @@ export default function App() {
         console.error(err)
         showFallback(err?.message, err?.message)
       })
+    engineChain = run
 
     return () => {
       cancelled = true
@@ -114,14 +121,14 @@ export default function App() {
     paused: (paused) => { setUi((u) => ({ ...u, paused })); engineRef.current?.setPaused(paused) },
   }
   const setRef = useRef(set)
-  setRef.current = set
+  useEffect(() => { setRef.current = set })
 
   const actions = {
     nudge: () => engineRef.current?.nudge(reducedMotion ? 0.45 : 1),
     reset: () => engineRef.current?.reset(),
   }
   const actionsRef = useRef(actions)
-  actionsRef.current = actions
+  useEffect(() => { actionsRef.current = actions })
 
   // Keyboard shortcuts (ignored while typing or operating a control).
   useEffect(() => {
@@ -181,7 +188,7 @@ export default function App() {
           <span>Jelly.</span>
         </h1>
         <p className="caption">
-          A slice of watermelon jelly you can pull and cut. About a thousand particles of soft body, lit through like
+          A slice of watermelon jelly you can pull and cut. Six hundred particles of soft body, lit through like
           candy. Nothing here is a picture.
         </p>
       </header>

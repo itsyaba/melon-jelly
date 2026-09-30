@@ -288,7 +288,7 @@ export function embed(rest, tets, pts) {
       }
     }
     if (best < 0) for (let t = 0; t < nT; t++) if (valid[t]) tryTet(t);
-    if (best < 0) best = 0, bestB = [1, 0, 0, 0];
+    if (best < 0) { best = 0; bestB = [1, 0, 0, 0]; }
     for (let k = 0; k < 4; k++) {
       idx[4 * p + k] = tets[4 * best + k];
       w[4 * p + k] = bestB[k];

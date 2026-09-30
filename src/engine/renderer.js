@@ -408,6 +408,7 @@ export class Renderer {
   destroy() {
     this.lost = true;
     this.onLost = null;
+    try { this.ctx.unconfigure(); } catch { /* not configured */ }
     try { this.device.destroy(); } catch { /* already gone */ }
   }
 }

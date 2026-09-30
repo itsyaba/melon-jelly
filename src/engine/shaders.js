@@ -255,21 +255,21 @@ fn contactAO(P: vec3f) -> f32 {
     let pocket = mix(vec3f(0.85, 0.84, 0.8), u.flesh.rgb * 0.35 + vec3f(0.3), pow(1.0 - NdV, 1.5));
     col = pocket * (0.55 + 0.35 * max(NdL, 0.0)) + ggx(N, V, L, 0.05) * I * 0.6;
   } else if (in.mat < 4.5) {
-    // knife steel, shaded like a product shot
+    // knife steel, shaded like a product shot: it mirrors the studio (mostly paper)
     let bevel = in.mat < 3.2;
     let bolster = in.mat > 3.6;
     var rough = 0.12;
     if (bevel) { rough = 0.22; }
     if (bolster) { rough = 0.06; }
-    let brushed = 0.88 + 0.12 * vnoise(vec3f(q.x * 5.0, q.y * 420.0, q.z * 30.0));
-    let sweep = mix(0.1, 1.05, smoothstep(-0.35, 0.8, R.y)) * mix(0.8, 1.15, clamp(q.y / 0.63, 0.0, 1.0));
-    let F0 = 0.56;
-    let fres = F0 + (1.0 - F0) * pow(1.0 - NdV, 5.0);
+    let brushed = 0.9 + 0.1 * vnoise(vec3f(q.x * 5.0, q.y * 420.0, q.z * 30.0));
+    let sweep = mix(0.55, 1.1, smoothstep(-0.6, 0.7, R.y)) * mix(0.85, 1.1, clamp(q.y / 0.63, 0.0, 1.0));
+    let F0 = vec3f(0.56, 0.57, 0.58);
+    let fres = F0 + (vec3f(1.0) - F0) * pow(1.0 - NdV, 5.0);
     let env = studioEnv(R, rough, bg);
-    var steel = vec3f(0.6, 0.61, 0.63) * sweep * brushed * 0.42 * fres;
-    if (bevel) { steel *= 1.25; }
-    steel += max(env - bg * 1.15, vec3f(0.0)) * fres * brushed;
-    steel += vec3f(ggx(N, V, L, max(rough, 0.08)) * I * fres * 0.5);
+    var steel = min(env, bg * 1.15) * fres * sweep * brushed;
+    steel += max(env - bg * 1.15, vec3f(0.0)) * fres;       // studio highlights on top
+    if (bevel) { steel = steel * 1.12 + vec3f(0.02); }
+    steel += vec3f(ggx(N, V, L, max(rough, 0.08)) * I) * fres * 0.5;
     col = steel;
   } else {
     // walnut handle with oiled satin finish and three steel rivets
@@ -399,7 +399,7 @@ export const WGSL_MAIN = WGSL_COMMON + /* wgsl */ `
   let R = reflect(-V, N);
   let cell = floor(Q * 70.0);
   if (hash3(cell) > 0.985) {
-    body += vec3f(pow(max(dot(R, L), 0.0), 40.0) * fleshW * 1.5 * I);
+    body += vec3f(pow(max(dot(R, L), 0.0), 40.0) * fleshW * fleshW * 0.6 * I);
   }
 
   // ---- surface: Fresnel studio reflections + GGX

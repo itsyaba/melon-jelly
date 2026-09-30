@@ -11,7 +11,6 @@ for (let f = 0; f < 180; f++) {
 }
 console.log('ms/step', ((performance.now()-t0)/180).toFixed(2));
 // grab & pull
-const c = sim.centroid();
 const tip = [0, 0.3, 0.2];
 sim.beginGrab(tip, 0.4);
 for (let f = 0; f < 90; f++) { sim.moveGrab([0, 2.0, -1.5]); sim.step(); }

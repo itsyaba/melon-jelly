@@ -1,4 +1,4 @@
-export const HINTS = {
+const HINTS = {
   hand: 'Grab any piece — tip, corner, flesh or rind — and pull. Scroll, or add a second finger, while holding to twist it.',
   knife: 'Draw a line across the slice — the knife lines up over it and cuts when you let go. Cut the pieces again, as small as you like.',
 }

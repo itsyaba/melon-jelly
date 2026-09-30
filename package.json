@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "node scripts/geom-check.mjs && node scripts/physics-check.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "shot": "node scripts/shot.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

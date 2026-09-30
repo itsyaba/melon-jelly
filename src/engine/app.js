@@ -198,7 +198,6 @@ export async function createEngine({ canvas, strokeLine, settings, on = {} }) {
     return add(ray.o, scale(ray.d, t));
   }
 
-  let lastPickTri = -1;
   // Möller–Trumbore over body triangles of the skinned surface.
   function pick(ray) {
     const { index, ranges } = mesh, d = dyn, end = ranges.body.count;
@@ -222,7 +221,6 @@ export async function createEngine({ canvas, strokeLine, settings, on = {} }) {
       if (t > 1e-4 && t < best) { best = t; bestTri = i / 3; }
     }
     if (bestTri < 0) return null;
-    lastPickTri = bestTri;
     return { t: best, p: add(ray.o, scale(ray.d, best)), tri: bestTri, comp: mesh.vComp[index[3 * bestTri]] };
   }
 
